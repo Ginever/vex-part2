@@ -5,8 +5,8 @@
 #define BROWNCOLOURTHRESHOLD 2000
 
 
-#define MOTORDRIVEOFFSETKP 4
-#define MOTORDRIVEOFFSETKI 0.00001
+#define MOTORDRIVEOFFSETKP 2
+#define MOTORDRIVEOFFSETKI 0.001
 #define ACCEPTABLEDISTANCERROR 10
 
 void student_Main();    // The main entry point to the student code
@@ -15,14 +15,14 @@ void student_Main();    // The main entry point to the student code
 int convertPower(double powerLevel);
 int convertEncoderCountToMilliMeters(int encoderCount);
 void driveStraight(int distance);
-void driveUntilDistanceTo(int distance);
+int driveUntilDistanceTo(int distance);
 void driveUntilBlack();
-int smoothDriveSigma(int leftTargetPower, int rightTargetPower, int time, int attack);
 int smoothAcceleration(int targerPower, int time);
 void armPosition(int maxPower, int targetAngle);
 void turnAngleRadius(float targetPower, int targetAngle, int targetRadiusOfCurvature);
 void turnAngle(float targetPower, int targetAngle);
 void lineFollow(int inputPower);
+void advancedLineFollowing(float power);
 
 // DO NOT ADD ANY PROTOTYPES AFTER THIS LINE
 #endif  // STUDENT_CODE_H

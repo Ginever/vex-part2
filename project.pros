@@ -1,7 +1,7 @@
 {
   "py/object": "pros.conductor.project.Project",
   "py/state": {
-    "project_name": "Project part 2",
+    "project_name": "LineFollow",
     "target": "v5",
     "templates": {
       "kernel": {
@@ -311,7 +311,7 @@
     "upload_options": {
       "icon": "clawbot",
       "after": "screen",
-      "slot": 1,
+      "slot": 4,
       "description": "sdfjgfsd"
     }
   }
