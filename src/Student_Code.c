@@ -38,35 +38,55 @@ void student_Main()
     //Config !! DO NOT REMOVE !!
     armUp(5000);
     resetEncoder(ArmEncoder);
+    resetTimer(T_4);
     //End of Config
     
-    advancedLineFollowing(50);
-    //Task 1
-    // driveStraight(300);
-    // delay(3000);
-    // driveStraight(-300);
 
-    //Task 2
-    // delay(3000);
-    // armPosition(60, 0);
-    // delay(3000);
-    // armPosition(60, 30);
-    // delay(3000);
+   //  pick up payload
+   int payloadDistance = driveUntilDistanceTo(300);
+   delay(50);
+   armPosition(60, -11);
+   driveStraight(50);
+   armUp(5000);
+   driveStraight(-1*payloadDistance - 30);
+   delay(50);
 
-    //Task 3
-    // turnAngle(50, 93);
-    // delay(3000);
-    // turnAngle(50, -183);
-    // delay(3000);
+   //navigate to line
+   turnAngle(60, 92);
+   delay(50);
+   driveStraight(720);
+   delay(50);
+   turnAngle(60, -92);
+   delay(50);
+   driveUntilBlack();
 
-    //Task 4
-    //lineFollow(40);
 
-    // //Task 5
-    // driveUntilDistanceTo(300);
+   //follow line
+   advancedLineFollowing(50);
 
-    // //Task 6
-    //driveUntilBlack();
+   //drop off payload
+   driveUntilDistanceTo(395);
+   delay(50);
+   armPosition(60, -11);
+   delay(50);
+   driveStraight(-100);
+   delay(50);
+   armUp(5000);
+   delay(50);
+
+   //return home
+   driveStraight(200);
+   delay(50);
+   turnAngle(60, -90);
+   delay(50);
+   driveStraight(1300);
+   delay(50);
+   turnAngle(60, -90);
+   delay(50);
+   driveStraight(370);
+
+
+   lcd_print(LCDLine7, "Timer: %d", readTimer(T_4));
 }
 
 // __[ CONVERT POWER ]________________________________________________
@@ -106,7 +126,7 @@ int convertEncoderCountToMilliMeters(int encoderCount){
  * @param distance the target distance for the robot to drive in millimeters
  */
 void driveStraight(int distance){
-    int distanceError, motorOffsetError, power, previousPower;
+    int distanceError, motorOffsetError, power, previousError;
     int totalMotorOffsetError = 0;
     int totalDistanceError = 0;
 
@@ -148,11 +168,11 @@ void driveStraight(int distance){
         lcd_print(LCDLine4, "error: %d, %d", distanceError, totalDistanceError);
 
         //reset timer if power changes between samples
-        if (previousPower != power || abs(power) == 80) resetTimer(T_2);
-        previousPower = power;
+        if (distanceError != previousError) resetTimer(T_2);
+        previousError = distanceError;
 
         delay(50); //sample at 20Hz
-    } while (readTimer(T_2) < 1000);
+    } while (abs(totalDistanceError) > 50 || abs(distanceError) > 5);
 
     motorPower(LeftMotor, 0);
     motorPower(RightMotor, 0);
@@ -210,6 +230,8 @@ void driveUntilBlack() {
 
     motorPower(LeftMotor, 0);
     motorPower(RightMotor, 0);
+
+    delay(1000);
 }
 
 // __ [ SMOOTH ACCELERATION ] _________________________________________
@@ -475,7 +497,7 @@ void advancedLineFollowing(float power){
 
     bool isTurning = false;
     
-    power = convertPower(40);
+    power = convertPower(power);
 
     
 
@@ -489,15 +511,11 @@ void advancedLineFollowing(float power){
     	lcd_clear();
         lcd_print(LCDLine1, "Light: %d, %d, %d", leftLight, midLight, rightLight);
 
-        if (rightLight > BROWNCOLOURTHRESHOLD && midLight > BROWNCOLOURTHRESHOLD){
-            motorPower(LeftMotor, power*0.5);
-            motorPower(RightMotor, -power);
-            continue;
-        }
+        if (leftLight  > BLACKCOLOURTHRESHOLD || midLight > BLACKCOLOURTHRESHOLD || rightLight > BLACKCOLOURTHRESHOLD) break;
 
         if (rightLight > BROWNCOLOURTHRESHOLD){
-            motorPower(LeftMotor, power);
-            motorPower(RightMotor, -power);
+            motorPower(LeftMotor, power*0.7);
+            motorPower(RightMotor, -power*0.7);
 
             isTurning = false;
 
@@ -508,8 +526,8 @@ void advancedLineFollowing(float power){
         if (isTurning) continue;
 
         if (leftLight > BROWNCOLOURTHRESHOLD){
-            motorPower(LeftMotor, -power);
-            motorPower(RightMotor, power);
+            motorPower(LeftMotor, -power*0.7);
+            motorPower(RightMotor, power*0.7);
 
             isTurning = true;
 
@@ -531,4 +549,6 @@ void advancedLineFollowing(float power){
 
     motorPower(LeftMotor, 0);
     motorPower(RightMotor, 0);
+
+    delay(1000);
 }
