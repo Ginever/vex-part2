@@ -32,7 +32,6 @@ double encCountPerRev = 0.0;	    // number of encoder ticks per 1 revolution of 
 */
 
 /* Write your code in the function below. You may add helper functions below the studentCode function. */
-//MARK: hello world 
 void student_Main()
 {   
     //Config !! DO NOT REMOVE !!
@@ -43,12 +42,12 @@ void student_Main()
     
 
    //  pick up payload
-   int payloadDistance = driveUntilDistanceTo(300);
-   delay(50);
+   
+   int payloadDistance = driveUntilDistanceTo(350);
    armPosition(60, -11);
-   driveStraight(50);
+   driveStraight(100);
    armUp(5000);
-   driveStraight(-1*payloadDistance - 30);
+   driveStraight(-1*payloadDistance + 10);
    delay(50);
 
    //navigate to line
@@ -62,12 +61,12 @@ void student_Main()
 
 
    //follow line
-   advancedLineFollowing(50);
+   advancedLineFollowing(39);
 
    //drop off payload
    driveUntilDistanceTo(395);
    delay(50);
-   armPosition(60, -11);
+   armPosition(60, -10);
    delay(50);
    driveStraight(-100);
    delay(50);
@@ -126,14 +125,14 @@ int convertEncoderCountToMilliMeters(int encoderCount){
  * @param distance the target distance for the robot to drive in millimeters
  */
 void driveStraight(int distance){
-    int distanceError, motorOffsetError, power, previousError;
+    int distanceError, motorOffsetError, previousError;
     int totalMotorOffsetError = 0;
     int totalDistanceError = 0;
 
-    float u;
+    float u, power;
 
     //todo calibrate Ki and Kp for drive straight controller
-    float Kp = 1;
+    float Kp = 1.3;
     float Ki = 0.2;
 
     resetEncoder(LeftEncoder);
@@ -153,7 +152,7 @@ void driveStraight(int distance){
         motorOffsetError = convertEncoderCountToMilliMeters(readSensor(LeftEncoder) - readSensor(RightEncoder));
         totalMotorOffsetError = totalMotorOffsetError + motorOffsetError;
 
-        power = saturate(Kp*distanceError + Ki*totalDistanceError, -80,80);
+        power = saturate((double)Kp*distanceError + (double)Ki*totalDistanceError, -80,80);
         u = MOTORDRIVEOFFSETKP*motorOffsetError + MOTORDRIVEOFFSETKI*totalMotorOffsetError;
 
         //Apply acceleration smoothing and convert power to mV before sending the power levels to the motors
@@ -164,7 +163,7 @@ void driveStraight(int distance){
         //printing infomation for debug
         lcd_print(LCDLine1, "driveStraight: ");
         lcd_print(LCDLine2, "left: %d right: %d", convertEncoderCountToMilliMeters(readSensor(LeftEncoder)), convertEncoderCountToMilliMeters(readSensor(RightEncoder)));
-        lcd_print(LCDLine3, "power: %d", power);
+        lcd_print(LCDLine3, "power: %f", power);
         lcd_print(LCDLine4, "error: %d, %d", distanceError, totalDistanceError);
 
         //reset timer if power changes between samples
@@ -172,7 +171,7 @@ void driveStraight(int distance){
         previousError = distanceError;
 
         delay(50); //sample at 20Hz
-    } while (abs(totalDistanceError) > 50 || abs(distanceError) > 5);
+    } while (abs(totalDistanceError) > 120 || abs(distanceError) > 5);
 
     motorPower(LeftMotor, 0);
     motorPower(RightMotor, 0);
@@ -487,21 +486,29 @@ void lineFollow(int inputPower) {
     }
 }
 
-
+// __ [ ADVANCED LINE FOLLOWING ] ______________________________________
+/**
+ *  @brief Uses edge following to follow the line with more accuracy 
+ *  @param power the power the robot is targeted to drive at (%)
+*/
 void advancedLineFollowing(float power){
     int leftLight, midLight, rightLight, u, lightError, totalLightError = 0;
 
     int targetLightLevel = 1800;
-    float Kp = 1;
+    float Kp = 1.5;
     float Ki = 0;
 
     bool isTurning = false;
     
     power = convertPower(power);
 
-    
+    //Stop drive motors
+    motorPower(LeftMotor, 0);
+    motorPower(RightMotor, 0);
+    resetTimer(T_1);
 
-    do {
+
+    while (true) {
         delay(50);
 
         leftLight = readSensor(LeftLight);
@@ -511,23 +518,40 @@ void advancedLineFollowing(float power){
     	lcd_clear();
         lcd_print(LCDLine1, "Light: %d, %d, %d", leftLight, midLight, rightLight);
 
+        //exit the loop in any sensor detects a black line
         if (leftLight  > BLACKCOLOURTHRESHOLD || midLight > BLACKCOLOURTHRESHOLD || rightLight > BLACKCOLOURTHRESHOLD) break;
 
-        if (rightLight > BROWNCOLOURTHRESHOLD){
-            motorPower(LeftMotor, power*0.7);
-            motorPower(RightMotor, -power*0.7);
-
+        //Turn Right (CW) slowly if right sensor detects line and the robot turned right less than 1.5 secs ago
+        if (rightLight > BROWNCOLOURTHRESHOLD && readTimer(T_1) < 800 && readTimer(T_1) > 300){
+            motorPower(LeftMotor, power);
+            motorPower(RightMotor, 0);
+            
             isTurning = false;
 
             lcd_print(LCDLine2, "TURNING CCW");
             continue;
         }
 
+        //turn Right (CW) if right light sensor detects brown
+        if (rightLight > BROWNCOLOURTHRESHOLD){
+            motorPower(LeftMotor, power);
+            motorPower(RightMotor, -power);
+
+            isTurning = false;
+
+            if (readTimer(T_1) > 300) resetTimer(T_1);
+
+            lcd_print(LCDLine2, "TURNING CCW");
+            continue;
+        }
+
+        //contiue turning left (CCW) if already turning left
+        //prevents the edge detector detecting the wrong edge
         if (isTurning) continue;
 
         if (leftLight > BROWNCOLOURTHRESHOLD){
-            motorPower(LeftMotor, -power*0.7);
-            motorPower(RightMotor, power*0.7);
+            motorPower(LeftMotor, -power);
+            motorPower(RightMotor, power);
 
             isTurning = true;
 
@@ -535,6 +559,8 @@ void advancedLineFollowing(float power){
             continue;
         } 
 
+
+        //Edge following controller to keep robot on edge of line
         lightError = targetLightLevel - midLight;
         totalLightError = totalLightError + lightError;
 
@@ -545,10 +571,12 @@ void advancedLineFollowing(float power){
         motorPower(LeftMotor, power + u);
         motorPower(RightMotor, power - u);
 
-    } while (true);
+    };
 
+    //Stop drive motors
     motorPower(LeftMotor, 0);
     motorPower(RightMotor, 0);
 
+    //delay required by the project requirements
     delay(1000);
 }
