@@ -1,7 +1,7 @@
 /**
  * @file Student_Code.c
  * @author Lachlan Dean & Zac Ginever
- * @brief description of this file
+ * @brief the main file for the robot control code to allow the robot to successfully navigate the warehouse
  * @version 0.1
  * @date 22-03-24
  *
@@ -26,11 +26,6 @@ double armRatio = 0.0;				// ratio of arm shaft rotations to arm motor shaft rot
 double encCountPerRev = 0.0;	    // number of encoder ticks per 1 revolution of the motor shaft
 // ------------------------------------------------------------------------------------
 
-/** ------------------------------------ TODO -----------------------------------------
- * Recalabrate drive straight now that antiwindup is implemented
- * Check drive until black still works I have refactored the code
-*/
-
 /* Write your code in the function below. You may add helper functions below the studentCode function. */
 void student_Main()
 {   
@@ -39,15 +34,13 @@ void student_Main()
     resetEncoder(ArmEncoder);
     resetTimer(T_4);
     //End of Config
-    
 
    //  pick up payload
-   
    int payloadDistance = driveUntilDistanceTo(350);
    armPosition(60, -11);
    driveStraight(100);
    armUp(5000);
-   driveStraight(-1*payloadDistance + 10);
+   driveStraight(-1*payloadDistance - 20);
    delay(50);
 
    //navigate to line
@@ -61,11 +54,16 @@ void student_Main()
 
 
    //follow line
-   advancedLineFollowing(39);
+   advancedLineFollowing(40);
+   delay(50);
 
    //drop off payload
    driveUntilDistanceTo(395);
    delay(50);
+   armPosition(60, 0);
+
+   //pause to steady the payload to increase accuracy
+   delay(200);
    armPosition(60, -10);
    delay(50);
    driveStraight(-100);
@@ -130,29 +128,34 @@ void driveStraight(int distance){
     int totalDistanceError = 0;
 
     float u, power;
-
-    //todo calibrate Ki and Kp for drive straight controller
     float Kp = 1.3;
     float Ki = 0.2;
 
+    //reset encoders and timers
     resetEncoder(LeftEncoder);
     resetEncoder(RightEncoder);
     resetTimer(T_1);
     resetTimer(T_2);
     lcd_clear();
     do {
+        //Calulate error e(t) = r(t) - u(t)
         distanceError = distance - convertEncoderCountToMilliMeters((readSensor(LeftEncoder) + readSensor(RightEncoder))/2);
 
         //anti-wind up measure
         //totalDistanceError will not integrate if distanceError is already saturating the control effort 
         if (abs(distanceError*Kp) < 80){
+            //Calculate intergral error
             totalDistanceError = totalDistanceError + distanceError;
         }
 
+        //Calculate motor offset error to allow the robot to drive straight
         motorOffsetError = convertEncoderCountToMilliMeters(readSensor(LeftEncoder) - readSensor(RightEncoder));
         totalMotorOffsetError = totalMotorOffsetError + motorOffsetError;
 
+        //Calculate drive effort 
         power = saturate((double)Kp*distanceError + (double)Ki*totalDistanceError, -80,80);
+
+        //Calculate drive straight control effort
         u = MOTORDRIVEOFFSETKP*motorOffsetError + MOTORDRIVEOFFSETKI*totalMotorOffsetError;
 
         //Apply acceleration smoothing and convert power to mV before sending the power levels to the motors
@@ -173,6 +176,7 @@ void driveStraight(int distance){
         delay(50); //sample at 20Hz
     } while (abs(totalDistanceError) > 120 || abs(distanceError) > 5);
 
+    //Stop drive motors
     motorPower(LeftMotor, 0);
     motorPower(RightMotor, 0);
 }
@@ -185,8 +189,10 @@ void driveStraight(int distance){
  * @return the distance the robot has driven (mm)
 */
 int driveUntilDistanceTo(int distance){
+    //calculate distance the robot needs to drive based on sonar distance
     int driveDistance = readSensor(SonarSensor) - distance;
 
+    //Drive calculated distance
     driveStraight(driveDistance);
 
     return driveDistance;
@@ -204,17 +210,23 @@ void driveUntilBlack() {
     int power = 50;
     float u;
 
+    //reset timers and encoders
     resetEncoder(LeftEncoder);
     resetEncoder(RightEncoder);
     resetTimer(T_1);
     lcd_clear();
 
     do {
+        //Calculate motor offset error to allow the robot to drive straight
         motorOffsetError = convertEncoderCountToMilliMeters(readSensor(LeftEncoder) - readSensor(RightEncoder));
+
+        //Calculate the integral of the motor offset error 
         totalMotorOffsetError = totalMotorOffsetError + motorOffsetError;
 
+        //Calculate straightening control effot
         u = MOTORDRIVEOFFSETKP*motorOffsetError + MOTORDRIVEOFFSETKI*totalMotorOffsetError;
 
+        //Apply smooth acceleration, convert the power to millivolts and send it to the motors
         motorPower(LeftMotor,  convertPower(smoothAcceleration(power - u, readTimer(T_1))));
         motorPower(RightMotor, convertPower(smoothAcceleration(power + u, readTimer(T_1))));
 
@@ -224,12 +236,17 @@ void driveUntilBlack() {
         lcd_print(LCDLine2, "left: %d right: %d", convertEncoderCountToMilliMeters(readSensor(LeftEncoder)), convertEncoderCountToMilliMeters(readSensor(RightEncoder)));
         lcd_print(LCDLine3, "Light Levels: %d %d %d", readSensor(LeftLight), readSensor(MidLight), readSensor(RightLight));
         lcd_print(LCDLine4, "power: %d", power);
-        delay(50);
+
+        delay(50); //sample at 20 Hz
+
+        //Exit 
     } while (readSensor(LeftLight) < BLACKCOLOURTHRESHOLD && readSensor(MidLight) < BLACKCOLOURTHRESHOLD && readSensor(RightLight) < BLACKCOLOURTHRESHOLD);
 
+    //Stop drive motors
     motorPower(LeftMotor, 0);
     motorPower(RightMotor, 0);
 
+    //required delay for saftey
     delay(1000);
 }
 
@@ -256,16 +273,23 @@ void armPosition(int maxPower, int targetAngle) {
     int Kp = 20;
    
     do {
+        //calculate angle error
         error = (double)targetAngle - ((double)readSensor(ArmEncoder)) * (360.0/(7.0*900.0)) - 52.0;
 
+        //Calculate control effort
         armPower = saturate(Kp * error, -1 * maxPower, maxPower);
+
+        //convert power to mV
         armPower = convertPower(armPower);
-       
+
+        //Set motor power to calculated power
         motorPower(ArmMotor, armPower);
 
+        //Debugging lcd prints 
         lcd_print(LCDLine1, "Error is %d", error);
         lcd_print(LCDLine2, "Encoder is %d", readSensor(ArmEncoder));
-        delay(50);
+
+        delay(50); //sample at 50 Hz
     } while (abs(error) > 1);
    
     motorPower(ArmMotor, 0);  
@@ -346,7 +370,7 @@ void turnAngleRadius(float targetPower, int targetAngle, int targetRadiusOfCurva
 
 /**
  * @brief a function to turn a user specifed angle
- * @param targetPoewr target turn power (%)
+ * @param targetPower target turn power (%)
  * @param targetAngle Target angle for the robot to turn (°)
 */
 void turnAngle(float targetPower, int targetAngle){
@@ -359,30 +383,40 @@ void turnAngle(float targetPower, int targetAngle){
     float angleKi = 0.1;
     float curvatureKi = 0;
 
+    //reset encoders and timers
     resetEncoder(LeftEncoder);
     resetEncoder(RightEncoder);
     resetTimer(T_1);
     lcd_clear();
 
     do {
+        //Get wheel displacements
         leftDistance = convertEncoderCountToMilliMeters(readSensor(LeftEncoder));
         rightDistance = convertEncoderCountToMilliMeters(readSensor(RightEncoder));
 
+
+        //Calculate current angle based on wheel displacements
         currentAngle = ((float)(rightDistance - leftDistance)/(robotWidth - wheelWidth))*180.0/PI;
 
-        //Angle errors
+        //Calculate angle error
         angleError = targetAngle - currentAngle;
+
+        //Anti-wind measure up to prevent integrator overshoot 
         if (abs(angleKp*angleError) < targetPower){
+            //Summing integral error
             totalAngleError = totalAngleError + angleError;
         }
 
+        //Calculate radius of curvature error
         radiusOfCurvatureError = leftDistance - rightDistance;
         totalRadiusOfCurvatureError = totalRadiusOfCurvatureError + radiusOfCurvatureError;
 
+        //calculate control effort for angle displacement
         uPower = saturate(angleKp*angleError + angleKi*totalAngleError, targetPower*-1, targetPower);
-
+        //convert power to millivolts
         uPower = convertPower(uPower);
 
+        //calculate control effort for radius of curvature
         uCurvature = curvatureKi*radiusOfCurvatureError + curvatureKi*totalRadiusOfCurvatureError;
 
         lcd_print(LCDLine1, "turnAroundCenter: ");
@@ -392,12 +426,14 @@ void turnAngle(float targetPower, int targetAngle){
         lcd_print(LCDLine5, "Rerror: %d, %d", radiusOfCurvatureError, totalRadiusOfCurvatureError);
         lcd_print(LCDLine6, "uCurvature: %d", uCurvature);
 
+        //Apply control efforts to the motors
         motorPower(LeftMotor, -1*uPower - uCurvature);
         motorPower(RightMotor, uPower + uCurvature);
 
         delay(50); // sample at 20Hz
     } while (abs(angleError) > 1);
 
+    //Stop drive motors
     motorPower(LeftMotor, 0);
     motorPower(RightMotor, 0);
 }
@@ -506,11 +542,13 @@ void advancedLineFollowing(float power){
     motorPower(LeftMotor, 0);
     motorPower(RightMotor, 0);
     resetTimer(T_1);
+    resetTimer(T_2);
 
 
     while (true) {
         delay(50);
 
+        //read Light sensor values
         leftLight = readSensor(LeftLight);
         midLight = readSensor(MidLight);
         rightLight = readSensor(RightLight);
@@ -519,7 +557,7 @@ void advancedLineFollowing(float power){
         lcd_print(LCDLine1, "Light: %d, %d, %d", leftLight, midLight, rightLight);
 
         //exit the loop in any sensor detects a black line
-        if (leftLight  > BLACKCOLOURTHRESHOLD || midLight > BLACKCOLOURTHRESHOLD || rightLight > BLACKCOLOURTHRESHOLD) break;
+        if ((leftLight  > BLACKCOLOURTHRESHOLD || midLight > BLACKCOLOURTHRESHOLD || rightLight > BLACKCOLOURTHRESHOLD) && readTimer(T_2) > 500) break;
 
         //Turn Right (CW) slowly if right sensor detects line and the robot turned right less than 1.5 secs ago
         if (rightLight > BROWNCOLOURTHRESHOLD && readTimer(T_1) < 800 && readTimer(T_1) > 300){
@@ -576,7 +614,4 @@ void advancedLineFollowing(float power){
     //Stop drive motors
     motorPower(LeftMotor, 0);
     motorPower(RightMotor, 0);
-
-    //delay required by the project requirements
-    delay(1000);
 }

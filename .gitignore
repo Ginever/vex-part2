@@ -15,3 +15,6 @@ temp.log
 temp.errors
 *.ini
 .d/
+
+# Documentation
+Vex Part 2 report.docx
