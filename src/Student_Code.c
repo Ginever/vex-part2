@@ -2,11 +2,9 @@
  * @file Student_Code.c
  * @author Lachlan Dean & Zac Ginever
  * @brief the main file for the robot control code to allow the robot to successfully navigate the warehouse
- * @version 0.1
- * @date 22-03-24
- *
+ * @version 1.0
+ * @date 08/05/24
  * @copyright Copyright (c) 2024
- *
  */
 
 /* Libraries. DO NOT REMOVE */
@@ -22,11 +20,10 @@
 int drivingWheelDiameter = 103; // diameter of the driving wheels [mm]
 int robotWidth = 250;           // width of the robot including the wheel thickness [mm]
 int wheelWidth = 22;            // width of the driving wheel [mm]
-double armRatio = 0.0;          // ratio of arm shaft rotations to arm motor shaft rotations
-double encCountPerRev = 0.0;    // number of encoder ticks per 1 revolution of the motor shaft
+double armRatio = 7.0;          // ratio of arm shaft rotations to arm motor shaft rotations
+double encCountPerRev = 900;    // number of encoder ticks per 1 revolution of the motor shaft
 // ------------------------------------------------------------------------------------
 
-/* Write your code in the function below. You may add helper functions below the studentCode function. */
 void student_Main()
 {
     // Config !! DO NOT REMOVE !!
@@ -36,8 +33,8 @@ void student_Main()
     // End of Config
 
     //pick up payload
-    int payloadDistance = driveUntilDistanceTo(370);
-    armPosition(60, -11);
+    int payloadDistance = driveUntilDistanceTo(380);
+    armPosition(60, -12.2);
     driveStraight(100);
     armUp(5000);
     driveStraight(-1 * payloadDistance - 40);
@@ -61,9 +58,11 @@ void student_Main()
     delay(50);
     armPosition(60, 0);
 
-    // pause to steady the payload to increase accuracy
+    // pause to stabilise the payload to increase placment accuracy
     delay(500);
-    armPosition(60, -12);
+    armPosition(60, -12.2);
+
+    //reverse away from payload
     delay(50);
     driveStraight(-100);
     delay(50);
@@ -113,7 +112,7 @@ int convertPower(double powerLevel)
 int convertEncoderCountToMilliMeters(int encoderCount)
 {
     // Using arc=pi*radius in radians
-    return (PI * encoderCount * drivingWheelDiameter) / 900;
+    return (PI * encoderCount * drivingWheelDiameter) / encCountPerRev;
 }
 
 // __ [ DRIVE STRAIGHT ] ______________________________________________
@@ -137,7 +136,7 @@ void driveStraight(int distance)
     resetEncoder(RightEncoder);
     resetTimer(T_1);
     resetTimer(T_2);
-    lcd_clear();
+
     do
     {
         // Calulate error e(t) = r(t) - u(t)
@@ -164,13 +163,6 @@ void driveStraight(int distance)
         // Apply acceleration smoothing and convert power to mV before sending the power levels to the motors
         motorPower(LeftMotor, convertPower(smoothAcceleration(power - u, readTimer(T_1))));
         motorPower(RightMotor, convertPower(smoothAcceleration(power + u, readTimer(T_1))));
-
-        // todo remove in production
-        // printing infomation for debug
-        lcd_print(LCDLine1, "driveStraight: ");
-        lcd_print(LCDLine2, "left: %d right: %d", convertEncoderCountToMilliMeters(readSensor(LeftEncoder)), convertEncoderCountToMilliMeters(readSensor(RightEncoder)));
-        lcd_print(LCDLine3, "power: %f", power);
-        lcd_print(LCDLine4, "error: %d, %d", distanceError, totalDistanceError);
 
         // reset timer if power changes between samples
         if (distanceError != previousError)
@@ -220,7 +212,6 @@ void driveUntilBlack()
     resetEncoder(LeftEncoder);
     resetEncoder(RightEncoder);
     resetTimer(T_1);
-    lcd_clear();
 
     do
     {
@@ -237,16 +228,9 @@ void driveUntilBlack()
         motorPower(LeftMotor, convertPower(smoothAcceleration(power - u, readTimer(T_1))));
         motorPower(RightMotor, convertPower(smoothAcceleration(power + u, readTimer(T_1))));
 
-        // todo remove in production
-        // printing infomation for debugging
-        lcd_print(LCDLine1, "driveUntilBlack");
-        lcd_print(LCDLine2, "left: %d right: %d", convertEncoderCountToMilliMeters(readSensor(LeftEncoder)), convertEncoderCountToMilliMeters(readSensor(RightEncoder)));
-        lcd_print(LCDLine3, "Light Levels: %d %d %d", readSensor(LeftLight), readSensor(MidLight), readSensor(RightLight));
-        lcd_print(LCDLine4, "power: %d", power);
-
         delay(50); // sample at 20 Hz
 
-        // Exit
+        // Exit if any light sensor detects black
     } while (readSensor(LeftLight) < BLACKCOLOURTHRESHOLD && readSensor(MidLight) < BLACKCOLOURTHRESHOLD && readSensor(RightLight) < BLACKCOLOURTHRESHOLD);
 
     // Stop drive motors
@@ -284,7 +268,7 @@ void armPosition(int maxPower, int targetAngle)
     do
     {
         // calculate angle error
-        error = (double)targetAngle - ((double)readSensor(ArmEncoder)) * (360.0 / (7.0 * 900.0)) - 52.0;
+        error = (double)targetAngle - ((double)readSensor(ArmEncoder)) * (360.0 / (armRatio * encCountPerRev)) - 52.0;
 
         // Calculate control effort
         armPower = saturate(Kp * error, -1 * maxPower, maxPower);
@@ -294,10 +278,6 @@ void armPosition(int maxPower, int targetAngle)
 
         // Set motor power to calculated power
         motorPower(ArmMotor, armPower);
-
-        // Debugging lcd prints
-        lcd_print(LCDLine1, "Error is %d", error);
-        lcd_print(LCDLine2, "Encoder is %d", readSensor(ArmEncoder));
 
         delay(50); // sample at 50 Hz
     } while (abs(error) > 1);
@@ -325,7 +305,6 @@ void turnAngle(float targetPower, int targetAngle)
     resetEncoder(LeftEncoder);
     resetEncoder(RightEncoder);
     resetTimer(T_1);
-    lcd_clear();
 
     do
     {
@@ -358,13 +337,6 @@ void turnAngle(float targetPower, int targetAngle)
         // calculate control effort for radius of curvature
         uCurvature = curvatureKi * radiusOfCurvatureError + curvatureKi * totalRadiusOfCurvatureError;
 
-        lcd_print(LCDLine1, "turnAroundCenter: ");
-        lcd_print(LCDLine2, "left: %d right: %d", convertEncoderCountToMilliMeters(readSensor(LeftEncoder)), convertEncoderCountToMilliMeters(readSensor(RightEncoder)));
-        lcd_print(LCDLine3, "power: %d", uPower);
-        lcd_print(LCDLine4, "Derror: %d, %d", angleError, totalAngleError);
-        lcd_print(LCDLine5, "Rerror: %d, %d", radiusOfCurvatureError, totalRadiusOfCurvatureError);
-        lcd_print(LCDLine6, "uCurvature: %d", uCurvature);
-
         // Apply control efforts to the motors
         motorPower(LeftMotor, -1 * uPower - uCurvature);
         motorPower(RightMotor, uPower + uCurvature);
@@ -384,12 +356,10 @@ void turnAngle(float targetPower, int targetAngle)
  */
 void advancedLineFollowing(float power)
 {
-    int leftLight, midLight, rightLight, u, lightError, totalLightError = 0;
+    int leftLight, midLight, rightLight, u, lightError;
 
     int targetLightLevel = 1800;
     float Kp = 1.5;
-    float Ki = 0;
-
     bool isTurning = false;
 
     power = convertPower(power);
@@ -409,17 +379,12 @@ void advancedLineFollowing(float power)
         midLight = readSensor(MidLight);
         rightLight = readSensor(RightLight);
 
-        lcd_clear();
-        lcd_print(LCDLine1, "Light: %d, %d, %d", leftLight, midLight, rightLight);
-
         // exit the loop in any sensor detects a black line
         if ((leftLight > BLACKCOLOURTHRESHOLD || midLight > BLACKCOLOURTHRESHOLD || rightLight > BLACKCOLOURTHRESHOLD) && readTimer(T_2) > 500) break;
         
         //to prevent the random turn at the end of the line following section that makes the robot innacurate
-        if ((leftLight > BROWNCOLOURTHRESHOLD && rightLight > BROWNCOLOURTHRESHOLD - 200) || (rightLight > BROWNCOLOURTHRESHOLD && leftLight > BROWNCOLOURTHRESHOLD - 200)){
-            lcd_print(LCDLine2, "Continuing");
-            continue;
-        }
+        if ((leftLight > BROWNCOLOURTHRESHOLD && rightLight > BROWNCOLOURTHRESHOLD - 200) || (rightLight > BROWNCOLOURTHRESHOLD && leftLight > BROWNCOLOURTHRESHOLD - 200)) continue;
+        
 
         // Turn Right (CW) slowly if right sensor detects line and the robot turned right less than 1.5 secs ago
         if (rightLight > BROWNCOLOURTHRESHOLD && readTimer(T_1) < 800 && readTimer(T_1) > 300)
@@ -428,8 +393,6 @@ void advancedLineFollowing(float power)
             motorPower(RightMotor, 0);
 
             isTurning = false;
-
-            lcd_print(LCDLine2, "TURNING CCW");
             continue;
         }
 
@@ -441,37 +404,31 @@ void advancedLineFollowing(float power)
 
             isTurning = false;
 
-            if (readTimer(T_1) > 300)
-                resetTimer(T_1);
-
-            lcd_print(LCDLine2, "TURNING CCW");
+            if (readTimer(T_1) > 300) resetTimer(T_1);
             continue;
         }
 
         // contiue turning left (CCW) if already turning left
         // prevents the edge detector detecting the wrong edge
-        if (isTurning)
-            continue;
-
+        if (isTurning) continue;
+    	
+        // turn left (CCW) if left light sensor detects brown
         if (leftLight > BROWNCOLOURTHRESHOLD)
         {
             motorPower(LeftMotor, -power);
             motorPower(RightMotor, power);
 
             isTurning = true;
-
-            lcd_print(LCDLine2, "TURNING CW");
             continue;
         }
 
         // Edge following controller to keep robot on edge of line
         lightError = targetLightLevel - midLight;
-        totalLightError = totalLightError + lightError;
 
-        u = Kp * lightError + Ki * totalLightError;
+        //Calculate light error
+        u = Kp * lightError;
 
-        lcd_print(LCDLine2, "U: %d", u);
-
+        //Apply light error and send power to motors
         motorPower(LeftMotor, power + u);
         motorPower(RightMotor, power - u);
     };

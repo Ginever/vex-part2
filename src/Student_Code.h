@@ -1,17 +1,18 @@
 #ifndef STUDENT_CODE_H
 #define STUDENT_CODE_H
 
+//Black and Brown colour thresholds
 #define BLACKCOLOURTHRESHOLD 2390
 #define BROWNCOLOURTHRESHOLD 1900
 
-
-#define MOTORDRIVEOFFSETKP 2
+//Drive straight controller Ki and Kp
+//Pulled here becuase they are used in more than one function
+#define MOTORDRIVEOFFSETKP 2.5
 #define MOTORDRIVEOFFSETKI 0.001
-#define ACCEPTABLEDISTANCERROR 10
 
 void student_Main();    // The main entry point to the student code
 
-// Add your function prototypes below
+// Function prototypes below
 int convertPower(double powerLevel);
 int convertEncoderCountToMilliMeters(int encoderCount);
 void driveStraight(int distance);
